@@ -1,10 +1,14 @@
-import { useState } from 'react'
-import { Bot, Zap, CheckCircle2, AlertCircle, Settings2, Save } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Bot, Zap, CheckCircle2, AlertCircle, Save } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/contexts/AuthContext'
+import { fetchAgentConfig, saveAgentConfig, type AgentConfig } from '@/services/api/agent'
 
 const modelos = [
   { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', tag: 'Grátis', provider: 'Google' },
@@ -22,180 +26,209 @@ const fases = [
 ]
 
 export function AiAgentPage() {
+  const { tenant } = useAuth()
+  const empresaId = tenant?.empresa?.id ?? ''
+  const qc = useQueryClient()
+
   const [modelo, setModelo] = useState('gemini-2.0-flash')
   const [nomeAgente, setNomeAgente] = useState('Bia')
   const [nomeResponsavel, setNomeResponsavel] = useState('Rejane Leal')
-  const [q1, setQ1] = useState('Oie {{lead.nome}}, tudo bem? 😊\nSou a {{nome_agente}} do time da {{nome_responsavel}} e estou entrando em contato porque você preencheu nosso formulário pra conhecer e ter acesso às estratégias de vendas da {{nome_responsavel}} pra aumentar o faturamento da sua loja! 💘\nCorreto?')
-  const [q2, setQ2] = useState('Vi também que você comentou que teu maior desafio hoje é {{lead.desafio}}. É isso mesmo?')
-  const [empatia, setEmpatia] = useState('Baseado nisso tudo que você me contou e preencheu no seu formulário, já vejo que faria total sentido você conversar mais de perto com a {{nome_responsavel}}. Com certeza ela vai conseguir te ajudar bastante!')
-  const [salvo, setSalvo] = useState(false)
+  const [q1, setQ1] = useState('')
+  const [q2, setQ2] = useState('')
+  const [empatia, setEmpatia] = useState('')
+  const [saved, setSaved] = useState(false)
 
-  function salvar() {
-    setSalvo(true)
-    setTimeout(() => setSalvo(false), 2500)
+  const { data: config, isLoading } = useQuery({
+    queryKey: ['agent-config', empresaId],
+    queryFn: () => fetchAgentConfig(empresaId),
+    enabled: !!empresaId,
+  })
+
+  // Populate form when config loads
+  useEffect(() => {
+    if (!config) return
+    if (config.modelo) setModelo(config.modelo)
+    if (config.nome_agente) setNomeAgente(config.nome_agente)
+    if (config.nome_responsavel) setNomeResponsavel(config.nome_responsavel)
+    if (config.q1_template !== undefined) setQ1(config.q1_template)
+    else setQ1('Oie {{lead.nome}}, tudo bem? 😊\nSou a {{nome_agente}} do time da {{nome_responsavel}} e estou entrando em contato porque você preencheu nosso formulário pra conhecer e ter acesso às estratégias de vendas da {{nome_responsavel}} pra aumentar o faturamento da sua loja! 💘\nCorreto?')
+    if (config.q2_template !== undefined) setQ2(config.q2_template)
+    else setQ2('Vi também que você comentou que teu maior desafio hoje é {{lead.desafio}}. É isso mesmo?')
+    if (config.empatia_template !== undefined) setEmpatia(config.empatia_template)
+    else setEmpatia('Baseado nisso tudo que você me contou e preencheu no seu formulário, já vejo que faria total sentido você conversar mais de perto com a {{nome_responsavel}}. Com certeza ela vai conseguir te ajudar bastante!')
+  }, [config])
+
+  const mutation = useMutation({
+    mutationFn: (cfg: AgentConfig) => saveAgentConfig(empresaId, cfg),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent-config', empresaId] })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    },
+  })
+
+  function handleSave() {
+    mutation.mutate({
+      modelo,
+      nome_agente: nomeAgente,
+      nome_responsavel: nomeResponsavel,
+      q1_template: q1,
+      q2_template: q2,
+      empatia_template: empatia,
+    })
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    )
   }
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in max-w-4xl">
+    <div className="p-6 space-y-6 animate-fade-in max-w-3xl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Agente IA</h2>
-          <p className="text-xs text-muted-foreground">Configure o comportamento do assistente de vendas</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Configure o comportamento e fluxo da Bia</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs text-green-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-            Online
-          </div>
-          <Button size="sm" onClick={salvar} className="gap-1.5">
+          {saved && (
+            <span className="text-xs text-green-600 flex items-center gap-1">
+              <CheckCircle2 size={12} /> Salvo!
+            </span>
+          )}
+          {mutation.isError && (
+            <span className="text-xs text-destructive flex items-center gap-1">
+              <AlertCircle size={12} /> Erro ao salvar
+            </span>
+          )}
+          <Button size="sm" onClick={handleSave} disabled={mutation.isPending} className="gap-1.5">
             <Save size={13} />
-            {salvo ? 'Salvo!' : 'Salvar'}
+            {mutation.isPending ? 'Salvando…' : 'Salvar'}
           </Button>
         </div>
       </div>
 
-      {/* Status card */}
-      <Card className="border-green-500/20 bg-green-500/5">
+      {/* Status */}
+      <Card>
         <CardContent className="p-4 flex items-center gap-4">
-          <div className="h-10 w-10 rounded-xl bg-green-500/10 flex items-center justify-center">
-            <Bot size={18} className="text-green-500" />
+          <div className="relative">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
+              {nomeAgente.slice(0, 2)}
+            </div>
+            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-background" />
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold">Agente ativo e funcionando</p>
-            <p className="text-xs text-muted-foreground">47 mensagens processadas hoje · última atividade há 3 min</p>
+          <div>
+            <p className="text-sm font-semibold">{nomeAgente}</p>
+            <p className="text-xs text-muted-foreground">Agente online · {modelos.find(m => m.value === modelo)?.label}</p>
           </div>
-          <Badge variant="success">Gemini 2.0 Flash</Badge>
+          <Badge variant="success" className="ml-auto">Ativo</Badge>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Model selection */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Modelo de IA</CardTitle>
-            <CardDescription>Escolha o LLM que processa as respostas</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {modelos.map(m => (
-              <label
-                key={m.value}
-                className={cn(
-                  'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all',
-                  modelo === m.value ? 'border-primary bg-primary/5' : 'border-border hover:border-border/80 hover:bg-muted/30'
-                )}
-              >
-                <input type="radio" name="modelo" value={m.value} checked={modelo === m.value} onChange={() => setModelo(m.value)} className="accent-primary" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium">{m.label}</span>
-                    <Badge variant={m.tag === 'Grátis' ? 'success' : m.tag === 'Recomendado' ? 'default' : 'muted'} className="text-2xs">
-                      {m.tag}
-                    </Badge>
-                  </div>
-                  <p className="text-2xs text-muted-foreground">{m.provider}</p>
-                </div>
-              </label>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Persona */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Persona do agente</CardTitle>
-            <CardDescription>Identidade usada nas mensagens Q1/Q2</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <label className="text-xs font-medium mb-1.5 block">Nome do agente</label>
-              <Input value={nomeAgente} onChange={e => setNomeAgente(e.target.value)} placeholder="Bia" className="text-sm" />
-              <p className="text-2xs text-muted-foreground mt-1">Variável: <code className="bg-muted px-1 rounded">{'{{nome_agente}}'}</code></p>
-            </div>
-            <div>
-              <label className="text-xs font-medium mb-1.5 block">Nome do responsável / mentor(a)</label>
-              <Input value={nomeResponsavel} onChange={e => setNomeResponsavel(e.target.value)} placeholder="Rejane Leal" className="text-sm" />
-              <p className="text-2xs text-muted-foreground mt-1">Variável: <code className="bg-muted px-1 rounded">{'{{nome_responsavel}}'}</code></p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Flow templates */}
+      {/* Modelo */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Settings2 size={15} className="text-primary" />
-            <CardTitle>Mensagens do fluxo de qualificação</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Modelo de IA</CardTitle>
+          <CardDescription className="text-xs">Escolha o provedor de linguagem</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {modelos.map(m => (
+            <button
+              key={m.value}
+              onClick={() => setModelo(m.value)}
+              className={cn(
+                'rounded-lg border p-3 text-left transition-colors',
+                modelo === m.value
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border hover:border-primary/50 hover:bg-accent/50',
+              )}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <Zap size={13} className={modelo === m.value ? 'text-primary' : 'text-muted-foreground'} />
+                <Badge variant={m.tag === 'Recomendado' ? 'success' : 'secondary'} className="text-[10px]">
+                  {m.tag}
+                </Badge>
+              </div>
+              <p className="text-xs font-semibold">{m.label}</p>
+              <p className="text-[11px] text-muted-foreground">{m.provider}</p>
+            </button>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Persona */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Persona</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Nome do agente</label>
+            <Input value={nomeAgente} onChange={e => setNomeAgente(e.target.value)} className="h-8 text-sm" />
           </div>
-          <CardDescription>
-            Variáveis disponíveis: <code className="bg-muted px-1 rounded text-xs">{'{{lead.nome}}'}</code>{' '}
-            <code className="bg-muted px-1 rounded text-xs">{'{{lead.desafio}}'}</code>{' '}
-            <code className="bg-muted px-1 rounded text-xs">{'{{nome_agente}}'}</code>{' '}
-            <code className="bg-muted px-1 rounded text-xs">{'{{nome_responsavel}}'}</code>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Nome do responsável</label>
+            <Input value={nomeResponsavel} onChange={e => setNomeResponsavel(e.target.value)} className="h-8 text-sm" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Templates */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Fluxo de qualificação</CardTitle>
+          <CardDescription className="text-xs">
+            Variáveis: <code className="bg-muted px-1 rounded">{'{{lead.nome}}'}</code>{' '}
+            <code className="bg-muted px-1 rounded">{'{{lead.desafio}}'}</code>{' '}
+            <code className="bg-muted px-1 rounded">{'{{nome_agente}}'}</code>{' '}
+            <code className="bg-muted px-1 rounded">{'{{nome_responsavel}}'}</code>
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label className="text-xs font-semibold mb-1.5 block">Mensagem Q1 — primeira abordagem</label>
-            <textarea
-              rows={4}
-              value={q1}
-              onChange={e => setQ1(e.target.value)}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs font-mono resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold mb-1.5 block">Mensagem Q2 — confirmação do desafio</label>
-            <textarea
-              rows={2}
-              value={q2}
-              onChange={e => setQ2(e.target.value)}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs font-mono resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold mb-1.5 block">Texto de empatia — antes dos slots</label>
-            <textarea
-              rows={3}
-              value={empatia}
-              onChange={e => setEmpatia(e.target.value)}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs font-mono resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
+          {[
+            { label: 'Q1 — Primeira abordagem', value: q1, onChange: setQ1 },
+            { label: 'Q2 — Confirmação do desafio', value: q2, onChange: setQ2 },
+            { label: 'Empatia (após Q2 confirmada)', value: empatia, onChange: setEmpatia },
+          ].map(({ label, value, onChange }) => (
+            <div key={label} className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">{label}</label>
+              <textarea
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                rows={4}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          ))}
         </CardContent>
       </Card>
 
-      {/* State machine overview */}
+      {/* State machine */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Zap size={15} className="text-primary" />
-            <CardTitle>Máquina de estados</CardTitle>
-          </div>
-          <CardDescription>Fluxo determinístico de qualificação — o agente nunca pula etapas</CardDescription>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Máquina de estados</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {fases.map((f, i) => (
-              <div key={f.fase} className="flex items-center gap-2">
-                <div className={cn(
-                  'flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs',
-                  f.ok ? 'border-green-500/20 bg-green-500/5' : 'border-border bg-muted/30'
-                )}>
-                  {f.ok
-                    ? <CheckCircle2 size={11} className="text-green-500 shrink-0" />
-                    : <AlertCircle size={11} className="text-muted-foreground shrink-0" />
-                  }
-                  <div>
-                    <p className="font-medium leading-none">{f.label}</p>
-                    <p className="text-2xs text-muted-foreground mt-0.5">{f.desc}</p>
-                  </div>
+        <CardContent className="space-y-2">
+          {fases.map((f, i) => (
+            <div key={f.fase} className="flex items-start gap-3">
+              <div className="flex flex-col items-center">
+                <div className={cn('w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0', f.ok ? 'bg-green-500/15' : 'bg-muted')}>
+                  {f.ok ? <CheckCircle2 size={12} className="text-green-500" /> : <AlertCircle size={12} className="text-muted-foreground" />}
                 </div>
-                {i < fases.length - 1 && <span className="text-muted-foreground text-xs">→</span>}
+                {i < fases.length - 1 && <div className="w-px flex-1 bg-border mt-1 mb-1 min-h-[16px]" />}
               </div>
-            ))}
-          </div>
+              <div className="pb-2">
+                <p className="text-xs font-medium">{f.label}</p>
+                <p className="text-[11px] text-muted-foreground">{f.desc}</p>
+              </div>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </div>
