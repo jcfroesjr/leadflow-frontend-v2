@@ -44,16 +44,29 @@ export async function fetchThreads(empresaId: string): Promise<Thread[]> {
     }
   }
 
-  // Enrich with lead names
+  // Enrich with lead names — normalize phone for matching:
+  // conversas stores 5521982822554, leads may store 21982822554 (without country code)
   const telefones = Array.from(map.keys())
   if (telefones.length > 0) {
+    // Build both variants: with and without 55 prefix
+    const variants = new Set<string>()
+    for (const tel of telefones) {
+      variants.add(tel)
+      if (tel.startsWith('55') && tel.length >= 12) variants.add(tel.slice(2))
+      else variants.add('55' + tel)
+    }
     const { data: leadsData } = await supabase
       .from('leads')
       .select('telefone, nome')
       .eq('empresa_id', empresaId)
-      .in('telefone', telefones)
+      .in('telefone', Array.from(variants))
     for (const l of leadsData ?? []) {
-      const t = map.get(l.telefone)
+      // Try exact match first
+      let t = map.get(l.telefone)
+      if (!t) {
+        // Try with 55 prefix
+        t = map.get('55' + l.telefone) ?? map.get(l.telefone.slice(2))
+      }
       if (t) t.nome = l.nome
     }
   }

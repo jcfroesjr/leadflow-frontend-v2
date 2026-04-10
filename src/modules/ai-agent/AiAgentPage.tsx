@@ -36,6 +36,7 @@ export function AiAgentPage() {
   const [q1, setQ1] = useState('')
   const [q2, setQ2] = useState('')
   const [empatia, setEmpatia] = useState('')
+  const [agentePausado, setAgentePausado] = useState(false)
   const [saved, setSaved] = useState(false)
 
   const { data: config, isLoading } = useQuery({
@@ -56,6 +57,7 @@ export function AiAgentPage() {
     else setQ2('Vi também que você comentou que teu maior desafio hoje é {{lead.desafio}}. É isso mesmo?')
     if (config.empatia_template !== undefined) setEmpatia(config.empatia_template)
     else setEmpatia('Baseado nisso tudo que você me contou e preencheu no seu formulário, já vejo que faria total sentido você conversar mais de perto com a {{nome_responsavel}}. Com certeza ela vai conseguir te ajudar bastante!')
+    if (config.agente_pausado !== undefined) setAgentePausado(config.agente_pausado)
   }, [config])
 
   const mutation = useMutation({
@@ -75,6 +77,7 @@ export function AiAgentPage() {
       q1_template: q1,
       q2_template: q2,
       empatia_template: empatia,
+      agente_pausado: agentePausado,
     })
   }
 
@@ -121,13 +124,28 @@ export function AiAgentPage() {
             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
               {nomeAgente.slice(0, 2)}
             </div>
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-background" />
+            <span className={cn('absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-background', agentePausado ? 'bg-amber-400' : 'bg-green-500')} />
           </div>
           <div>
             <p className="text-sm font-semibold">{nomeAgente}</p>
-            <p className="text-xs text-muted-foreground">Agente online · {modelos.find(m => m.value === modelo)?.label}</p>
+            <p className="text-xs text-muted-foreground">
+              {agentePausado ? 'Agente pausado' : 'Agente online'} · {modelos.find(m => m.value === modelo)?.label}
+            </p>
           </div>
-          <Badge variant="success" className="ml-auto">Ativo</Badge>
+          <div className="ml-auto flex items-center gap-2">
+            <Badge variant={agentePausado ? 'secondary' : 'success'}>{agentePausado ? 'Pausado' : 'Ativo'}</Badge>
+            <button
+              type="button"
+              onClick={() => setAgentePausado(p => !p)}
+              className={cn(
+                'relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                agentePausado ? 'bg-muted' : 'bg-green-500',
+              )}
+              aria-label={agentePausado ? 'Ativar agente' : 'Pausar agente'}
+            >
+              <span className={cn('inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform', agentePausado ? 'translate-x-1' : 'translate-x-4.5')} />
+            </button>
+          </div>
         </CardContent>
       </Card>
 

@@ -11,6 +11,7 @@ export interface AgentConfig {
   score_minimo?: number
   temperatura?: number
   max_tokens?: number
+  agente_pausado?: boolean
 }
 
 export async function fetchAgentConfig(empresaId: string): Promise<AgentConfig> {
