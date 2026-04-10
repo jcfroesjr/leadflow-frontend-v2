@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import type { Lead } from '@/types'
 
 export interface DashboardMetrics {
   totalLeads: number
@@ -23,7 +24,7 @@ export async function fetchDashboardMetrics(empresaId: string): Promise<Dashboar
     supabase.from('leads').select('*', { count: 'exact', head: true }).eq('empresa_id', empresaId),
     supabase.from('leads').select('*', { count: 'exact', head: true }).eq('empresa_id', empresaId).eq('status', 'agendado'),
     supabase.from('leads').select('*', { count: 'exact', head: true }).eq('empresa_id', empresaId).in('status', ['em_contato', 'qualificado']),
-    supabase.from('leads').select('*', { count: 'exact', head: true }).eq('empresa_id', empresaId).in('status', ['qualificado', 'agendado', 'convertido']),
+    supabase.from('leads').select('*', { count: 'exact', head: true }).eq('empresa_id', empresaId).eq('status', 'qualificado'),
   ])
 
   const total = totalLeads ?? 0
@@ -61,10 +62,10 @@ export async function fetchChartData(empresaId: string): Promise<ChartPoint[]> {
       .gte('criado_em', from)
       .lt('criado_em', toStr),
     supabase.from('agendamentos')
-      .select('criado_em')
+      .select('data_hora')
       .eq('empresa_id', empresaId)
-      .gte('criado_em', from)
-      .lt('criado_em', toStr),
+      .gte('data_hora', from)
+      .lt('data_hora', toStr),
   ])
 
   for (const row of leadsData ?? []) {
@@ -73,7 +74,7 @@ export async function fetchChartData(empresaId: string): Promise<ChartPoint[]> {
     if (pt) pt.leads++
   }
   for (const row of agData ?? []) {
-    const d = (row.criado_em as string).split('T')[0]
+    const d = (row.data_hora as string).split('T')[0]
     const pt = days.find(p => p.date === d)
     if (pt) pt.agendamentos++
   }
@@ -84,12 +85,12 @@ export async function fetchChartData(empresaId: string): Promise<ChartPoint[]> {
   }))
 }
 
-export async function fetchRecentLeads(empresaId: string) {
+export async function fetchRecentLeads(empresaId: string): Promise<Lead[]> {
   const { data } = await supabase
     .from('leads')
     .select('id, nome, telefone, status, score, criado_em')
     .eq('empresa_id', empresaId)
     .order('criado_em', { ascending: false })
     .limit(5)
-  return data ?? []
+  return (data ?? []) as Lead[]
 }

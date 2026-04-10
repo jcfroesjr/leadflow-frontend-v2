@@ -6,6 +6,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { formatRelativeTime } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
+import type { Lead } from '@/types'
 import {
   fetchDashboardMetrics,
   fetchChartData,
@@ -162,7 +163,7 @@ export function DashboardPage() {
             </p>
           ) : (
             <div className="space-y-1">
-              {(recentLeads ?? []).map((lead: { id: string; nome: string; telefone: string; status: string; score: number; criado_em: string }) => (
+              {(recentLeads ?? []).map((lead: Lead) => (
                 <div key={lead.id} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-accent/50 transition-colors">
                   <Avatar name={lead.nome} size="sm" />
                   <div className="flex-1 min-w-0">
